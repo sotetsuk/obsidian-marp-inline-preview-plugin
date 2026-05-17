@@ -18,9 +18,11 @@
 
 .marp-inline-preview-host > iframe {
   display: block;
-  width: 100%;
   border: 0;
   background: transparent;
+  /* width / height / transform are set inline by src/util/frame.ts —
+     the iframe has a fixed 1280-wide intrinsic viewport and is scaled
+     visually to fit the host. */
 }
 
 .marp-inline-preview-host .marp-inline-preview-scale {
