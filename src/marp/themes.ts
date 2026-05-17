@@ -5,77 +5,51 @@ import type { MarpEngine } from './engine';
 type Marprc = {
   theme?: string;
   themeSet?: string | string[];
-  options?: Record<string, unknown>;
-};
-
-export type ThemeContext = {
-  /** Theme name that should be applied to the deck (frontmatter > .marprc.yml > null). */
-  theme: string | null;
-  /** Concatenated CSS of every theme we registered for this resolve call. */
-  registeredCss: string;
 };
 
 export class ThemeResolver {
-  /** Cache of CSS string by resolved path, so repeated renders don't re-read. */
   private cssByPath = new Map<string, string>();
 
-  constructor(private app: App, private engine: MarpEngine, private explicitMarprcPath: string | null = null) {}
+  constructor(private app: App, private engine: MarpEngine) {}
 
-  setMarprcPath(path: string | null): void {
-    this.explicitMarprcPath = path;
-    this.cssByPath.clear();
-  }
-
-  /** Drop all caches so the next collect() re-reads from disk. */
+  /** Drop the CSS cache so the next collect() re-reads from disk. */
   invalidate(): void {
     this.cssByPath.clear();
   }
 
   /**
-   * Resolve themes for a given markdown file. Reads .marprc.yml (if any),
-   * registers every CSS in its `themeSet` with the Marp engine, and returns
-   * the chosen theme name plus the concatenated CSS we registered.
+   * Register every CSS file referenced by the active `.marprc.yml`'s
+   * `themeSet` with the Marp engine (side effect), and return the theme name
+   * that should be applied for this file (frontmatter > .marprc.yml > null).
    *
-   * Search order for .marprc.yml: explicit setting > vault root > file's folder.
+   * `.marprc.yml` lookup order: vault root, then the slide file's folder.
    */
-  async collect(file: TFile, frontmatterTheme: string | null): Promise<ThemeContext> {
+  async collect(file: TFile, frontmatterTheme: string | null): Promise<string | null> {
     const marprcPath = await this.findMarprc(file);
-    let cfg: Marprc | null = null;
-    if (marprcPath) {
-      cfg = await this.readMarprc(marprcPath);
+    const cfg = marprcPath ? await this.readMarprc(marprcPath) : null;
+
+    if (cfg?.themeSet) {
+      const entries = Array.isArray(cfg.themeSet) ? cfg.themeSet : [cfg.themeSet];
+      const slash = marprcPath ? marprcPath.lastIndexOf('/') : -1;
+      const baseDir = slash > 0 ? marprcPath!.slice(0, slash) : '';
+      for (const entry of entries) {
+        const resolved = normalizePath(baseDir ? `${baseDir}/${entry}` : entry);
+        const css = await this.readCss(resolved);
+        if (css != null) this.engine.registerTheme(css);
+      }
     }
 
-    const themeSet = this.toArray(cfg?.themeSet);
-    const baseDir = marprcPath ? parentDir(marprcPath) : '';
-    let registered = '';
-    for (const entry of themeSet) {
-      const resolved = normalizePath(baseDir ? `${baseDir}/${entry}` : entry);
-      const css = await this.readCss(resolved);
-      if (css == null) continue;
-      this.engine.registerTheme(css);
-      registered += `\n/* ${resolved} */\n${css}`;
-    }
-
-    const theme = frontmatterTheme || cfg?.theme || null;
-    return { theme, registeredCss: registered };
+    return frontmatterTheme || cfg?.theme || null;
   }
 
-  /** Locate the active .marprc.yml file. Returns vault-relative path or null. */
   private async findMarprc(file: TFile): Promise<string | null> {
     const adapter = this.app.vault.adapter;
-    if (this.explicitMarprcPath) {
-      const p = normalizePath(this.explicitMarprcPath);
-      return (await adapter.exists(p)) ? p : null;
-    }
-    // 1. Vault root
-    const rootCandidates = ['.marprc.yml', '.marprc.yaml'];
-    for (const name of rootCandidates) {
+    for (const name of ['.marprc.yml', '.marprc.yaml']) {
       if (await adapter.exists(name)) return name;
     }
-    // 2. Same directory as the file
-    const dir = file.parent?.path ?? '';
+    const dir = file.parent?.path;
     if (dir && dir !== '/') {
-      for (const name of rootCandidates) {
+      for (const name of ['.marprc.yml', '.marprc.yaml']) {
         const p = normalizePath(`${dir}/${name}`);
         if (await adapter.exists(p)) return p;
       }
@@ -85,8 +59,7 @@ export class ThemeResolver {
 
   private async readMarprc(path: string): Promise<Marprc | null> {
     try {
-      const raw = await this.app.vault.adapter.read(path);
-      const parsed = yaml.load(raw);
+      const parsed = yaml.load(await this.app.vault.adapter.read(path));
       if (parsed && typeof parsed === 'object') return parsed as Marprc;
     } catch (e) {
       console.warn(`[marp-inline-preview] failed to read ${path}`, e);
@@ -108,14 +81,4 @@ export class ThemeResolver {
       return null;
     }
   }
-
-  private toArray(v: string | string[] | undefined | null): string[] {
-    if (!v) return [];
-    return Array.isArray(v) ? v : [v];
-  }
-}
-
-function parentDir(path: string): string {
-  const i = path.lastIndexOf('/');
-  return i < 0 ? '' : path.slice(0, i);
 }

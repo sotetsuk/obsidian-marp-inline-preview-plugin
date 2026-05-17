@@ -4,7 +4,7 @@ import { ThemeResolver } from './marp/themes';
 import { buildReadingPostProcessor } from './reading/postProcessor';
 import { buildEditorExtension, refreshSlides } from './editor/extension';
 import type { EditorView } from '@codemirror/view';
-import { DEFAULT_SETTINGS, MarpSettingTab, MarpSettings } from './settings';
+import { DEBOUNCE_MS, DEFAULT_SETTINGS, MarpSettingTab, MarpSettings } from './settings';
 
 export default class MarpInlinePreviewPlugin extends Plugin {
   settings: MarpSettings = { ...DEFAULT_SETTINGS };
@@ -15,7 +15,7 @@ export default class MarpInlinePreviewPlugin extends Plugin {
     await this.loadSettings();
 
     this.engine = new MarpEngine({ math: this.settings.math === 'off' ? false : 'katex' });
-    this.themes = new ThemeResolver(this.app, this.engine, this.settings.marprcPath || null);
+    this.themes = new ThemeResolver(this.app, this.engine);
 
     this.registerMarkdownPostProcessor(
       buildReadingPostProcessor({
@@ -32,7 +32,7 @@ export default class MarpInlinePreviewPlugin extends Plugin {
         engine: this.engine,
         themes: this.themes,
         enabled: () => this.settings.editPreview,
-        debounceMs: () => this.settings.debounceMs,
+        debounceMs: () => DEBOUNCE_MS,
       }),
     );
 
@@ -75,7 +75,7 @@ export default class MarpInlinePreviewPlugin extends Plugin {
   }
 
   rebuildEngine(): void {
-    this.engine.rebuild({ math: this.settings.math === 'off' ? false : 'katex' }, []);
+    this.engine.rebuild({ math: this.settings.math === 'off' ? false : 'katex' });
     this.themes.invalidate();
     this.refreshActiveEditors();
     this.refreshActiveReadingViews();

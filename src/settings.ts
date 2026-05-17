@@ -5,17 +5,16 @@ export interface MarpSettings {
   editPreview: boolean;
   readingPreview: boolean;
   math: 'katex' | 'off';
-  debounceMs: number;
-  marprcPath: string;
 }
 
 export const DEFAULT_SETTINGS: MarpSettings = {
   editPreview: true,
   readingPreview: true,
   math: 'katex',
-  debounceMs: 300,
-  marprcPath: '',
 };
+
+/** Fixed debounce for edit-mode rebuilds. Was tunable via settings; pinned here. */
+export const DEBOUNCE_MS = 300;
 
 export class MarpSettingTab extends PluginSettingTab {
   constructor(app: App, private plugin: MarpInlinePreviewPlugin) {
@@ -62,38 +61,6 @@ export class MarpSettingTab extends PluginSettingTab {
             this.plugin.settings.math = v;
             await this.plugin.saveSettings();
             this.plugin.rebuildEngine();
-          }),
-      );
-
-    new Setting(containerEl)
-      .setName('Edit-mode debounce (ms)')
-      .setDesc('How long to wait after typing before re-rendering slides.')
-      .addText((t) =>
-        t
-          .setPlaceholder('300')
-          .setValue(String(this.plugin.settings.debounceMs))
-          .onChange(async (v) => {
-            const n = Number.parseInt(v, 10);
-            if (Number.isFinite(n) && n >= 0) {
-              this.plugin.settings.debounceMs = n;
-              await this.plugin.saveSettings();
-            }
-          }),
-      );
-
-    new Setting(containerEl)
-      .setName('.marprc.yml path')
-      .setDesc(
-        'Vault-relative path to a Marp config file. Leave empty to auto-detect (vault root, then the slide file\'s folder).',
-      )
-      .addText((t) =>
-        t
-          .setPlaceholder('.marprc.yml')
-          .setValue(this.plugin.settings.marprcPath)
-          .onChange(async (v) => {
-            this.plugin.settings.marprcPath = v.trim();
-            await this.plugin.saveSettings();
-            this.plugin.themes.setMarprcPath(this.plugin.settings.marprcPath || null);
           }),
       );
   }

@@ -5,7 +5,6 @@ import {
   EditorView,
   ViewPlugin,
   ViewUpdate,
-  WidgetType,
 } from '@codemirror/view';
 import { Extension, RangeSetBuilder, StateEffect, StateField } from '@codemirror/state';
 import type { MarpEngine } from '../marp/engine';
@@ -120,9 +119,8 @@ export function buildEditorExtension(deps: EditorDeps): Extension {
           const rawSrc = this.view.state.doc.toString();
           const fmTheme = typeof fm.theme === 'string' && fm.theme.length > 0 ? fm.theme : null;
           // collect() registers themeSet entries with the engine as a side
-          // effect. We intentionally drop registeredCss here so it isn't
-          // appended on top of Marp's own selected-theme output.
-          const { theme } = await deps.themes.collect(file, fmTheme);
+          // effect and returns the theme name that should be applied.
+          const theme = await deps.themes.collect(file, fmTheme);
           if (runId !== this.latestRunId || this.destroyed) return;
           const mdForMarp = fmTheme ? rawSrc : injectThemeIfMissing(rawSrc, theme);
 
@@ -140,7 +138,7 @@ export function buildEditorExtension(deps: EditorDeps): Extension {
               breaks[i].to,
               breaks[i].to,
               Decoration.widget({
-                widget: new SlideWidget(html[i], fullCss, i),
+                widget: new SlideWidget(html[i], fullCss),
                 block: true,
                 side: 1,
               }),
@@ -153,7 +151,7 @@ export function buildEditorExtension(deps: EditorDeps): Extension {
               docLength,
               docLength,
               Decoration.widget({
-                widget: new SlideWidget(html[lastIdx], fullCss, lastIdx),
+                widget: new SlideWidget(html[lastIdx], fullCss),
                 block: true,
                 side: 1,
               }),
@@ -192,4 +190,3 @@ function resolveFile(app: App, view: EditorView): TFile | null {
   return found ?? app.workspace.getActiveFile();
 }
 
-export { Decoration, EditorView, WidgetType };
