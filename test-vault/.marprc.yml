@@ -1,0 +1,8 @@
+# Marp configuration for the test vault.
+# Paths in `themeSet` are resolved relative to this file's location.
+themeSet:
+  - themes/my-theme.css
+# Default theme to apply when slide frontmatter doesn't override it.
+theme: default
+options:
+  html: true

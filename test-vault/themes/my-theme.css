@@ -1,0 +1,27 @@
+/* @theme my-theme */
+
+@import 'default';
+
+section {
+  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+  color: #f5f3ff;
+  font-family: 'Helvetica Neue', system-ui, sans-serif;
+  padding: 60px;
+}
+
+section h1,
+section h2 {
+  color: #fbbf24;
+  border-bottom: 2px solid rgba(251, 191, 36, 0.5);
+  padding-bottom: 0.2em;
+}
+
+section code {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+}
+
+section a {
+  color: #93c5fd;
+}

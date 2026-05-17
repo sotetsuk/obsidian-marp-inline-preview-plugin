@@ -1,0 +1,58 @@
+/*
+ * Marp Inline Preview — plugin styles
+ *
+ * The Marp-generated CSS itself is mounted inside Shadow DOM (see src/util/shadow.ts)
+ * so it does not affect Obsidian's own UI. The rules here only style the host
+ * elements that surround those shadow roots.
+ */
+
+.marp-inline-preview-host {
+  display: block;
+  width: 100%;
+  margin: 0.5em 0 1em 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  background: var(--background-secondary);
+  overflow: hidden;
+}
+
+.marp-inline-preview-host .marp-inline-preview-scale {
+  display: block;
+  width: 100%;
+  /* Slide aspect ratio is set per-slide via inline style so this is mainly a fallback */
+  aspect-ratio: 16 / 9;
+}
+
+.marp-inline-preview-deck {
+  display: flex;
+  flex-direction: column;
+  gap: 1em;
+  padding: 1em 0;
+}
+
+.marp-inline-preview-error {
+  padding: 0.5em 0.75em;
+  margin: 0.5em 0;
+  color: var(--text-error);
+  background: var(--background-modifier-error);
+  border-radius: var(--radius-s, 4px);
+  font-family: var(--font-monospace);
+  font-size: 0.85em;
+  white-space: pre-wrap;
+}
+
+/*
+ * Reading-mode takeover: when our processor decides a file is a Marp deck,
+ * it appends `.marp-deck-overlay` to the preview sizer and toggles `marp-active`
+ * on the sizer. This rule then collapses all of Obsidian's own block sections,
+ * leaving only our rendered deck visible. The original DOM stays attached so
+ * Obsidian's scroll bookkeeping isn't disturbed.
+ */
+.markdown-preview-sizer.marp-active > :not(.marp-deck-overlay) {
+  display: none !important;
+}
+
+.marp-deck-overlay {
+  display: block;
+  width: 100%;
+}

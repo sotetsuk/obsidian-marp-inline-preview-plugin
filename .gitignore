@@ -1,0 +1,9 @@
+node_modules/
+main.js
+main.js.map
+*.log
+.DS_Store
+
+# test vault state we don't want to track
+test-vault/.obsidian/workspace*
+test-vault/.obsidian/plugins/marp-inline-preview
