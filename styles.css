@@ -42,14 +42,18 @@
 }
 
 /*
- * Reading-mode takeover: when our processor decides a file is a Marp deck,
- * it appends `.marp-deck-overlay` to the preview sizer and toggles `marp-active`
- * on the sizer. This rule then collapses all of Obsidian's own block sections,
- * leaving only our rendered deck visible. The original DOM stays attached so
- * Obsidian's scroll bookkeeping isn't disturbed.
+ * Reading-mode takeover: our processor finds a per-file preview container,
+ * adds `.marp-active` to it, and prepends a `.marp-deck-overlay`. These
+ * rules then hide all other direct children of the container, leaving only
+ * our rendered deck visible. We use two paired rules (* then .marp-deck-overlay)
+ * rather than `:not(...)` so the show-rule can defeat any third-party CSS
+ * that also uses `!important` on the children.
  */
-.markdown-preview-sizer.marp-active > :not(.marp-deck-overlay) {
+.marp-active > * {
   display: none !important;
+}
+.marp-active > .marp-deck-overlay {
+  display: block !important;
 }
 
 .marp-deck-overlay {
