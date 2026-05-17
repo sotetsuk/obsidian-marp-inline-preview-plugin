@@ -48,6 +48,8 @@ function buildSrcdoc(bodyHtml: string, css: string): string {
   );
 }
 
+const sizedIframes = new WeakSet<HTMLIFrameElement>();
+
 function ensureIframe(host: HTMLElement): HTMLIFrameElement {
   let iframe = host.querySelector(':scope > iframe') as HTMLIFrameElement | null;
   if (iframe) return iframe;
@@ -68,6 +70,11 @@ function ensureIframe(host: HTMLElement): HTMLIFrameElement {
  * Mount a single slide (edit mode). The HTML from Marp's `htmlAsArray: true`
  * output is just the bare `<svg>` for that slide, so we wrap it in the
  * container `<div>` that Marp's selectors expect.
+ *
+ * We size the iframe to a pixel height derived from its current width rather
+ * than relying on `aspect-ratio: 16/9` — when CodeMirror inserts the widget
+ * the surrounding box hasn't laid out yet, so `aspect-ratio` can compute to
+ * a 0-height box and the slide content disappears below the visible band.
  */
 export function mountSlide(
   host: HTMLElement,
@@ -75,12 +82,14 @@ export function mountSlide(
   css: string,
 ): MountedFrame {
   const iframe = ensureIframe(host);
-  iframe.style.aspectRatio = '16 / 9';
-  iframe.style.height = '';
+  iframe.style.aspectRatio = '';
+  iframe.dataset.slideCount = '1';
   iframe.srcdoc = buildSrcdoc(
     `<div class="${CONTAINER_CLASS}">${slideHtml}</div>`,
     css,
   );
+  applyDeckHeight(iframe);
+  ensureSizeObserver(iframe);
   return { host, iframe };
 }
 
@@ -102,11 +111,12 @@ export function mountDeck(
   iframe.dataset.slideCount = String(Math.max(1, slideCount));
   iframe.srcdoc = buildSrcdoc(deckHtml, css);
   applyDeckHeight(iframe);
+  ensureSizeObserver(iframe);
   return { host, iframe };
 }
 
 /**
- * Recompute the deck iframe's pixel height from its host's current width.
+ * Recompute the iframe's pixel height from its host's current width.
  * Each slide is 16:9 and we add the same 0.75em bottom margin between slides
  * that the OVERRIDE_CSS applies inside the iframe (0.75em at the iframe's
  * default 16px root = 12px).
@@ -118,4 +128,17 @@ export function applyDeckHeight(iframe: HTMLIFrameElement): void {
   const slideH = (width * 9) / 16;
   const gapPx = 12; // 0.75em at the iframe's default 16px html font-size
   iframe.style.height = `${slideH * count + gapPx * (count - 1)}px`;
+}
+
+/**
+ * Re-run `applyDeckHeight` whenever the iframe's host box changes size.
+ * Necessary because the first call can happen before layout — the iframe's
+ * width is 0 at construction time, so we defer until the ResizeObserver fires
+ * the initial measurement, and we keep watching for pane-resizes after that.
+ */
+function ensureSizeObserver(iframe: HTMLIFrameElement): void {
+  if (sizedIframes.has(iframe)) return;
+  sizedIframes.add(iframe);
+  const target = iframe.parentElement ?? iframe;
+  new ResizeObserver(() => applyDeckHeight(iframe)).observe(target);
 }

@@ -1,0 +1,12 @@
+/* @theme figure-wrapper-test */
+@import 'default';
+
+section .figure-wrapper {
+  border: 6px solid red;
+  padding: 12px;
+}
+
+section .figure-wrapper img {
+  display: block;
+  max-width: 100%;
+}

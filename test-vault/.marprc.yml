@@ -2,6 +2,7 @@
 # Paths in `themeSet` are resolved relative to this file's location.
 themeSet:
   - themes/my-theme.css
+  - themes/figure-wrapper-test.css
 # Default theme to apply when slide frontmatter doesn't override it.
 theme: default
 options:

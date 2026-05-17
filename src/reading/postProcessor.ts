@@ -2,7 +2,7 @@ import { App, MarkdownPostProcessor, MarkdownPostProcessorContext, TFile } from 
 import type { MarpEngine } from '../marp/engine';
 import type { ThemeResolver } from '../marp/themes';
 import { injectThemeIfMissing } from '../marp/frontmatter';
-import { mountDeck, applyDeckHeight } from '../util/frame';
+import { mountDeck } from '../util/frame';
 import { rewriteImageSrcs } from '../util/images';
 import { fnv1a32 } from '../util/hash';
 
@@ -21,7 +21,6 @@ const STASH_ATTR = 'data-marp-stashed-display';
 type Snapshot = { hash: string; html: string; css: string; slideCount: number };
 const renderState = new WeakMap<HTMLElement, Snapshot>();
 const observed = new WeakSet<HTMLElement>();
-const sizeObserved = new WeakSet<HTMLElement>();
 
 export function buildReadingPostProcessor(deps: ReadingDeps): MarkdownPostProcessor {
   return async (el, ctx) => {
@@ -67,7 +66,6 @@ export function buildReadingPostProcessor(deps: ReadingDeps): MarkdownPostProces
       mountOverlay(host, html, css, slideCount);
       renderState.set(host, { hash: wantHash, html, css, slideCount });
       ensureObserver(host);
-      ensureResizeObserver(host);
     } catch (e) {
       console.error('[marp-inline-preview] reading-mode render failed', e);
       host.querySelectorAll(`:scope > .${OVERLAY_CLASS}`).forEach((n) => n.remove());
@@ -102,22 +100,6 @@ function mountOverlay(host: HTMLElement, html: string, css: string, slideCount: 
 function countSlides(html: string): number {
   const m = html.match(/<svg[^>]*\bdata-marpit-svg\b/g);
   return m ? m.length : 1;
-}
-
-/**
- * Watch the overlay host's width and re-apply the deck iframe's height
- * formula whenever it changes (e.g. when the user resizes the Obsidian
- * pane). Without this, a deck mounted at one width keeps the height it
- * was first sized to and either clips slides or leaves blank space.
- */
-function ensureResizeObserver(host: HTMLElement): void {
-  if (sizeObserved.has(host)) return;
-  sizeObserved.add(host);
-  new ResizeObserver(() => {
-    const overlay = host.querySelector(`:scope > .${OVERLAY_CLASS}`) as HTMLElement | null;
-    const iframe = overlay?.querySelector(':scope > iframe') as HTMLIFrameElement | null;
-    if (iframe) applyDeckHeight(iframe);
-  }).observe(host);
 }
 
 /**
