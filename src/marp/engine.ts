@@ -11,8 +11,9 @@ function build(opts: EngineOptions): Marp {
     script: false,
     html: true,
     math: opts.math === false ? false : 'katex',
-    // OS-native unicode emoji; no Twemoji CDN fetch.
-    emoji: { shortcode: false, unicode: false },
+    // Convert :memo: → 📝 as native unicode; leave existing unicode emoji as-is.
+    // No Twemoji CDN fetch in either case.
+    emoji: { shortcode: true, unicode: false },
   });
 }
 
