@@ -1,5 +1,5 @@
 import { WidgetType } from '@codemirror/view';
-import { mountSlide } from '../util/shadow';
+import { mountSlide } from '../util/frame';
 
 export class SlideWidget extends WidgetType {
   constructor(private slideHtml: string, private css: string) {
