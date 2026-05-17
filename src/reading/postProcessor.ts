@@ -68,9 +68,10 @@ export function buildReadingPostProcessor(deps: ReadingDeps): MarkdownPostProces
     } catch (e) {
       console.error('[marp-inline-preview] reading-mode render failed', e);
       host.querySelectorAll(`:scope > .${OVERLAY_CLASS}`).forEach((n) => n.remove());
-      const err = document.createElement('pre');
-      err.className = `${OVERLAY_CLASS} marp-inline-preview-error`;
-      err.textContent = `Marp render error: ${(e as Error).message}`;
+      const err = createEl('pre', {
+        cls: `${OVERLAY_CLASS} marp-inline-preview-error`,
+        text: `Marp render error: ${(e as Error).message}`,
+      });
       host.prepend(err);
       host.classList.add(ACTIVE_CLASS);
       hideNonOverlay(host);
@@ -88,8 +89,7 @@ function cleanup(host: HTMLElement): void {
 
 function mountOverlay(host: HTMLElement, slides: string[], css: string): void {
   host.querySelectorAll(`:scope > .${OVERLAY_CLASS}`).forEach((n) => n.remove());
-  const overlay = document.createElement('div');
-  overlay.className = OVERLAY_CLASS;
+  const overlay = createDiv({ cls: OVERLAY_CLASS });
   host.prepend(overlay);
   mountDeck(overlay, slides, css);
   host.classList.add(ACTIVE_CLASS);

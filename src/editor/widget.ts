@@ -11,8 +11,7 @@ export class SlideWidget extends WidgetType {
   }
 
   toDOM(): HTMLElement {
-    const host = document.createElement('div');
-    host.className = 'marp-inline-preview-host';
+    const host = createDiv({ cls: 'marp-inline-preview-host' });
     mountSlide(host, this.slideHtml, this.css);
     return host;
   }
