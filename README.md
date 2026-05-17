@@ -180,6 +180,15 @@ src/
 - KaTeX fonts are loaded from the bundle, not a CDN. Math works offline.
 - Twemoji is disabled; OS Unicode emoji are used instead, so no CDN fetch.
 
+## TODO: Marp CLI parity
+
+- Rewrite relative URLs emitted in inline styles, especially Marp background images such as `![bg](...)`. Marp Core renders these as `background-image:url(...)`, while the current Obsidian preview only rewrites `<img src="...">`, so images that work in Marp CLI can disappear inside the iframe.
+- Size preview iframes from each rendered SVG's `viewBox` instead of assuming Marp's default 1280x720 slide. Decks using `size: 4:3` or custom theme `@size` rules can currently be clipped or shown with the wrong aspect ratio compared with Marp CLI output.
+- Rework theme reloads so modified custom theme CSS replaces the existing Marp Core theme registration. The current cache invalidation re-reads CSS, but Marp Core may keep the first registered theme with the same name, leaving edit/reading previews stale after theme edits.
+- Include rendered CSS or a theme revision in the reading-mode render hash. At the moment the hash is based on markdown plus theme name, so a CSS-only theme update can be skipped even after requesting a reading preview rerender.
+- Decide how much of `.marprc.yml` CLI configuration should be supported beyond `theme` and `themeSet`. Options such as `html`, `math`, and other Marp CLI/Core settings can make the plugin preview differ from `marp` command output.
+- Preserve query strings and fragments when rewriting local resource URLs. Paths like `image.svg#fragment` or `image.png?cache=...` are resolved by stripping the suffix today, which can change rendered output versus Marp CLI.
+
 ## Limitations / known issues
 
 - **Mermaid** isn't supported — Marp Core itself doesn't ship Mermaid integration.
