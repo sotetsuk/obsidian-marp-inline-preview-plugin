@@ -32,10 +32,32 @@ export class ThemeResolver {
       const entries = Array.isArray(cfg.themeSet) ? cfg.themeSet : [cfg.themeSet];
       const slash = marprcPath ? marprcPath.lastIndexOf('/') : -1;
       const baseDir = slash > 0 ? marprcPath!.slice(0, slash) : '';
+      const adapter = this.app.vault.adapter;
       for (const entry of entries) {
         const resolved = normalizePath(baseDir ? `${baseDir}/${entry}` : entry);
-        const css = await this.readCss(resolved);
-        if (css != null) this.engine.registerTheme(css);
+        let stat: { type: 'file' | 'folder' } | null = null;
+        try {
+          stat = await adapter.stat(resolved);
+        } catch (e) {
+          console.warn(`[marp-inline-preview] failed to stat ${resolved}`, e);
+        }
+        if (stat?.type === 'folder') {
+          // Match Marp CLI: shallow scan of *.css in the folder.
+          try {
+            const listed = await adapter.list(resolved);
+            for (const p of listed.files) {
+              if (p.toLowerCase().endsWith('.css')) {
+                const css = await this.readCss(p);
+                if (css != null) this.engine.registerTheme(css);
+              }
+            }
+          } catch (e) {
+            console.warn(`[marp-inline-preview] failed to list ${resolved}`, e);
+          }
+        } else {
+          const css = await this.readCss(resolved);
+          if (css != null) this.engine.registerTheme(css);
+        }
       }
     }
 
