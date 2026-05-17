@@ -3,6 +3,7 @@ import type { MarpEngine } from '../marp/engine';
 import type { ThemeResolver } from '../marp/themes';
 import { injectThemeIfMissing } from '../marp/frontmatter';
 import { mountDeck, applyDeckHeight } from '../util/frame';
+import { rewriteImageSrcs } from '../util/images';
 import { fnv1a32 } from '../util/hash';
 
 export type ReadingDeps = {
@@ -59,7 +60,9 @@ export function buildReadingPostProcessor(deps: ReadingDeps): MarkdownPostProces
         return;
       }
 
-      const { html, css } = deps.engine.render(md);
+      const rendered = deps.engine.render(md);
+      const html = rewriteImageSrcs(rendered.html, ctx.sourcePath, deps.app);
+      const css = rendered.css;
       const slideCount = countSlides(html);
       mountOverlay(host, html, css, slideCount);
       renderState.set(host, { hash: wantHash, html, css, slideCount });

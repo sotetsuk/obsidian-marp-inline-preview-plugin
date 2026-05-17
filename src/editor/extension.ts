@@ -13,6 +13,7 @@ import { findSlideBreaks } from '../marp/slides';
 import { injectThemeIfMissing } from '../marp/frontmatter';
 import { SlideWidget } from './widget';
 import { debounce } from '../util/debounce';
+import { rewriteImageSrcs } from '../util/images';
 
 export type EditorDeps = {
   app: App;
@@ -124,9 +125,10 @@ export function buildEditorExtension(deps: EditorDeps): Extension {
           if (runId !== this.latestRunId || this.destroyed) return;
           const mdForMarp = fmTheme ? rawSrc : injectThemeIfMissing(rawSrc, theme);
 
-          const { html, css } = deps.engine.renderArray(mdForMarp);
+          const rendered = deps.engine.renderArray(mdForMarp);
+          const html = rendered.html.map((h) => rewriteImageSrcs(h, file.path, deps.app));
+          const fullCss = rendered.css;
           const breaks = findSlideBreaks(rawSrc);
-          const fullCss = css;
 
           const builder = new RangeSetBuilder<Decoration>();
           // Marp renders one section per slide; for a deck with N break lines
