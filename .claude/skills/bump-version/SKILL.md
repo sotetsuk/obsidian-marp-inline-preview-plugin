@@ -35,9 +35,11 @@ If the user did not supply an argument, default to `patch` and tell them you're 
 
 2. **Bump** — run:
    ```sh
-   npm version <arg> --tag-version-prefix=""
+   npm version <arg> --tag-version-prefix="" --ignore-scripts=false
    ```
    This creates one commit (message = the new version, e.g. `0.1.1`) and one tag (same name).
+
+   `--ignore-scripts=false` is **required**: some users (including this repo's maintainer) set `ignore-scripts=true` in `~/.npmrc` as a security hardening. Without the override, npm silently skips the `version` lifecycle script, leaving `manifest.json` and `versions.json` at the old version while still creating the bump commit and tag.
 
 3. **Verify** — run in parallel:
    - `git log -1 --oneline` — confirm the bump commit exists.
@@ -63,3 +65,20 @@ If the user did not supply an argument, default to `patch` and tell them you're 
 - If `npm version` fails mid-way (e.g. the `version` script errors), the working tree may have partial edits. Inspect with `git status` and resolve before retrying — don't blindly re-run.
 - `versions.json` maps plugin version → `minAppVersion`. If the user wants to require a newer Obsidian version, bump `minAppVersion` in `manifest.json` **before** running this skill so `version-bump.mjs` picks it up.
 - Never push with `--force` or `--no-verify`.
+
+## Recovery: bump commit missing manifest.json / versions.json
+
+If verification (step 3) shows `manifest.json` or `versions.json` still at the old version while the bump commit and tag already exist (most often because `--ignore-scripts=false` was omitted on a machine with `ignore-scripts=true` in `~/.npmrc`):
+
+1. Confirm the commit has not been pushed (`git status` shows "ahead of origin/main by 1 commit"). If it has been pushed, stop and ask the user before rewriting history.
+2. Run `version-bump.mjs` manually so it picks up the already-bumped `package.json`:
+   ```sh
+   npm_package_version=<new-version> node version-bump.mjs
+   ```
+3. Amend the bump commit and force-move the tag onto the amended commit:
+   ```sh
+   git add manifest.json versions.json
+   git commit --amend --no-edit
+   git tag -f <new-version>
+   ```
+4. Re-run the step 3 verification commands to confirm all four files (`package.json`, `package-lock.json`, `manifest.json`, `versions.json`) are in the bump commit and the tag points at it.
