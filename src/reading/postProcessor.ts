@@ -18,7 +18,7 @@ const OVERLAY_CLASS = 'marp-deck-overlay';
 const ACTIVE_CLASS = 'marp-active';
 const STASH_ATTR = 'data-marp-stashed-display';
 
-type Snapshot = { hash: string; html: string; css: string; slideCount: number };
+type Snapshot = { hash: string; slides: string[]; css: string };
 const renderState = new WeakMap<HTMLElement, Snapshot>();
 const observed = new WeakSet<HTMLElement>();
 
@@ -59,12 +59,11 @@ export function buildReadingPostProcessor(deps: ReadingDeps): MarkdownPostProces
         return;
       }
 
-      const rendered = deps.engine.render(md);
-      const html = rewriteImageSrcs(rendered.html, ctx.sourcePath, deps.app);
+      const rendered = deps.engine.renderArray(md);
+      const slides = rendered.html.map((h) => rewriteImageSrcs(h, ctx.sourcePath, deps.app));
       const css = rendered.css;
-      const slideCount = countSlides(html);
-      mountOverlay(host, html, css, slideCount);
-      renderState.set(host, { hash: wantHash, html, css, slideCount });
+      mountOverlay(host, slides, css);
+      renderState.set(host, { hash: wantHash, slides, css });
       ensureObserver(host);
     } catch (e) {
       console.error('[marp-inline-preview] reading-mode render failed', e);
@@ -87,19 +86,14 @@ function cleanup(host: HTMLElement): void {
   renderState.delete(host);
 }
 
-function mountOverlay(host: HTMLElement, html: string, css: string, slideCount: number): void {
+function mountOverlay(host: HTMLElement, slides: string[], css: string): void {
   host.querySelectorAll(`:scope > .${OVERLAY_CLASS}`).forEach((n) => n.remove());
   const overlay = document.createElement('div');
-  overlay.className = `${OVERLAY_CLASS} marp-inline-preview-host`;
+  overlay.className = OVERLAY_CLASS;
   host.prepend(overlay);
-  mountDeck(overlay, html, css, slideCount);
+  mountDeck(overlay, slides, css);
   host.classList.add(ACTIVE_CLASS);
   hideNonOverlay(host);
-}
-
-function countSlides(html: string): number {
-  const m = html.match(/<svg[^>]*\bdata-marpit-svg\b/g);
-  return m ? m.length : 1;
 }
 
 /**
@@ -143,7 +137,7 @@ function ensureObserver(host: HTMLElement): void {
     const snap = renderState.get(host);
     if (!snap) return;
     if (!host.querySelector(`:scope > .${OVERLAY_CLASS}`)) {
-      mountOverlay(host, snap.html, snap.css, snap.slideCount);
+      mountOverlay(host, snap.slides, snap.css);
       return;
     }
     for (const m of mutations) {
