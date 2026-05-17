@@ -64,45 +64,83 @@ theme: my-theme
 - **Inline preview in edit mode** — toggle the CodeMirror widget.
 - **Full preview in reading mode** — toggle the deck render.
 - **Math rendering** — `KaTeX` (bundled) or `Off`.
-- **Edit-mode debounce (ms)** — how long to wait after a keystroke before re-rendering. Default `300`.
-- **.marprc.yml path** — leave blank to auto-detect, or pin a specific vault-relative path.
 
 Command palette: `Marp Inline Preview: Refresh Marp previews` forces a full reload (useful after editing a theme file from outside Obsidian).
 
-## Install (manual copy)
+## Install: build locally and copy into another vault
 
-This plugin is distributed as build artefacts; copy the three files below into any vault you want to use it from.
+The plugin ships as three files (`main.js`, `manifest.json`, `styles.css`). You build them once in this repo, then drop them into any vault.
 
-1. Clone this repository and build:
+### 1. Build the plugin
 
-   ```bash
-   git clone https://github.com/<you>/obsidian-marp-inline-preview-plugin
-   cd obsidian-marp-inline-preview-plugin
-   npm install
-   npm run build
-   ```
+Requires Node.js 18 or newer.
 
-   The build produces `main.js` in the repo root (alongside the checked-in `manifest.json` and `styles.css`).
+```bash
+git clone https://github.com/<you>/obsidian-marp-inline-preview-plugin.git
+cd obsidian-marp-inline-preview-plugin
+npm install
+npm run build
+```
 
-2. In the target vault, create the plugin folder if it doesn't exist:
+After `npm run build` the repo root contains:
 
-   ```
-   <vault>/.obsidian/plugins/marp-inline-preview/
-   ```
+```
+main.js        # bundled plugin code (~1.9 MB, includes Marp Core + KaTeX)
+manifest.json  # plugin metadata (checked in)
+styles.css     # host-side styles (checked in)
+```
 
-   On mobile, you may need a file manager (e.g. Files.app on iOS or any Android file browser) to navigate into the hidden `.obsidian/plugins/` directory. The Obsidian Sync service syncs this folder automatically if enabled.
+### 2. Find the target vault's plugin folder
 
-3. Copy these three files into the new folder:
+Inside your Obsidian vault there is a hidden `.obsidian/` directory. Plugins live under `.obsidian/plugins/<plugin-id>/`. For this plugin the folder is `marp-inline-preview`.
 
-   - `main.js`
-   - `manifest.json`
-   - `styles.css`
+Typical full paths:
 
-4. Reload Obsidian (command palette → `Reload app without saving`).
+| OS | Example path |
+|---|---|
+| macOS / Linux | `/path/to/MyVault/.obsidian/plugins/marp-inline-preview/` |
+| Windows | `C:\Users\you\Documents\MyVault\.obsidian\plugins\marp-inline-preview\` |
+| iOS | `On My iPhone → Obsidian → MyVault → .obsidian → plugins → marp-inline-preview` (Files.app, "Show Hidden Files" on) |
+| Android | `/storage/emulated/0/MyVault/.obsidian/plugins/marp-inline-preview/` (any file manager) |
 
-5. Enable the plugin under **Settings → Community plugins → Marp Inline Preview**. You'll be asked to turn off Restricted Mode first if you haven't already.
+Create the directory if it doesn't exist yet.
 
-To **update**, repeat step 3 (overwrite the three files) and reload. To **uninstall**, disable the plugin and delete the folder.
+### 3. Copy the three files
+
+From the repo root, with `TARGET_VAULT` set to your vault directory:
+
+```bash
+# macOS / Linux
+TARGET_VAULT="/path/to/MyVault"
+mkdir -p "$TARGET_VAULT/.obsidian/plugins/marp-inline-preview"
+cp main.js manifest.json styles.css "$TARGET_VAULT/.obsidian/plugins/marp-inline-preview/"
+```
+
+```powershell
+# Windows PowerShell
+$TARGET_VAULT = "C:\Users\you\Documents\MyVault"
+New-Item -ItemType Directory -Force -Path "$TARGET_VAULT\.obsidian\plugins\marp-inline-preview" | Out-Null
+Copy-Item main.js, manifest.json, styles.css "$TARGET_VAULT\.obsidian\plugins\marp-inline-preview\"
+```
+
+On mobile, sync the three files via iCloud / Obsidian Sync / a USB transfer to the same path. Obsidian Sync replicates `.obsidian/plugins/` automatically if you enable it.
+
+### 4. Enable it in Obsidian
+
+1. Open the target vault.
+2. **Settings → Community plugins**. If you see "Restricted mode", turn it off.
+3. Reload the plugin list (the circular-arrow icon next to "Installed plugins"), or run **Reload app without saving** from the command palette.
+4. Toggle **Marp Inline Preview** on.
+
+Open a markdown file with `marp: true` in its frontmatter — you should see slide widgets in edit mode and the full deck in reading mode.
+
+### Updating
+
+Re-run `npm run build`, then re-copy the same three files (step 3) and reload Obsidian.
+
+### Uninstalling
+
+Disable the plugin in Settings → Community plugins, then delete `<vault>/.obsidian/plugins/marp-inline-preview/`.
 
 ## Development
 
@@ -113,7 +151,7 @@ npm run dev:vault    # symlinks build outputs into test-vault/ and starts esbuil
 
 Then in Obsidian: `File → Open vault…` and pick the `test-vault/` folder in this repo. Enable the plugin and open one of the files in `slides/`.
 
-`npm run build` produces a production bundle (~1.5 MB).
+`npm run build` produces a production bundle (~1.9 MB).
 
 Project layout:
 
