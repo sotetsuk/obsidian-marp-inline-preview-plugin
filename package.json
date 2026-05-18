@@ -1,6 +1,6 @@
 {
   "name": "marp-inline-preview",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "Obsidian plugin: inline Marp slide preview in edit and reading modes.",
   "main": "main.js",
   "scripts": {
