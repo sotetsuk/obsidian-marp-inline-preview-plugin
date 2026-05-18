@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type-check
+        run: npm run check:types
+
+      - name: Build (also feeds bundle smoke + L0 guards)
+        run: npm run build
+
+      - name: Unit + bundle smoke tests (L1 + L5)
+        run: npm test
+
+      - name: Build guards (L0 — banned imports + es-check)
+        run: npm run test:bundle
