@@ -32,6 +32,68 @@ const stripMathjaxPlugin = {
   },
 };
 
+/**
+ * Marp Core pulls in PostCSS and optional source-map helpers. Those helpers
+ * reference Node built-ins even though this plugin never needs filesystem
+ * source-map loading at runtime. Obsidian Mobile cannot load plugin bundles
+ * that contain bare `require("fs")`, so provide small browser-safe shims.
+ */
+const shimNodeBuiltinsPlugin = {
+  name: 'shim-node-builtins',
+  setup(build) {
+    const shim = (name, contents) => {
+      build.onResolve({ filter: new RegExp(`^(node:)?${name}$`) }, () => ({
+        path: name,
+        namespace: 'node-shim',
+      }));
+      build.onLoad({ filter: new RegExp(`^${name}$`), namespace: 'node-shim' }, () => ({
+        contents,
+        loader: 'js',
+      }));
+    };
+
+    shim(
+      'fs',
+      `
+        export function existsSync() { return false; }
+        export function readFileSync() { throw new Error('fs.readFileSync is not available in Obsidian Mobile'); }
+      `
+    );
+    shim(
+      'path',
+      `
+        export const sep = '/';
+        export function dirname(path) {
+          const normalized = String(path || '').replace(/\\\\/g, '/');
+          const index = normalized.lastIndexOf('/');
+          return index <= 0 ? (index === 0 ? '/' : '.') : normalized.slice(0, index);
+        }
+        export function join(...parts) {
+          return parts.filter(Boolean).join('/').replace(/\\/+/g, '/');
+        }
+        export function resolve(...parts) {
+          return join(...parts);
+        }
+        export function isAbsolute(path) {
+          return String(path || '').startsWith('/');
+        }
+      `
+    );
+    shim(
+      'url',
+      `
+        export function fileURLToPath(url) {
+          const value = String(url || '');
+          return value.startsWith('file://') ? decodeURIComponent(value.slice(7)) : value;
+        }
+        export function pathToFileURL(path) {
+          return new URL('file://' + String(path || ''));
+        }
+      `
+    );
+  },
+};
+
 const context = await esbuild.context({
   banner: { js: banner },
   entryPoints: ['src/main.ts'],
@@ -50,9 +112,9 @@ const context = await esbuild.context({
     '@lezer/common',
     '@lezer/highlight',
     '@lezer/lr',
-    ...builtins,
+    ...builtins.filter((name) => !['fs', 'path', 'url'].includes(name)),
   ],
-  plugins: [stripMathjaxPlugin],
+  plugins: [stripMathjaxPlugin, shimNodeBuiltinsPlugin],
   format: 'cjs',
   target: 'es2018',
   logLevel: 'info',
