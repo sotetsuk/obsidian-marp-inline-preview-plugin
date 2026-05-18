@@ -10,5 +10,9 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    // Per-file pragma `// @vitest-environment happy-dom` opts into DOM mode.
+    // setupFiles runs in every environment but only mutates globals that
+    // exist in happy-dom (document, etc.), so node-mode tests are unaffected.
+    setupFiles: ['tests/setup-dom.ts'],
   },
 });
