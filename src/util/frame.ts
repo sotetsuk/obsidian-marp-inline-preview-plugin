@@ -156,5 +156,12 @@ function ensureSizeObserver(iframe: HTMLIFrameElement): void {
   if (sizedIframes.has(iframe)) return;
   sizedIframes.add(iframe);
   const target = iframe.parentElement ?? iframe;
-  new ResizeObserver(() => applyFrameLayout(iframe)).observe(target);
+  // Defer the layout write to the next animation frame. applyFrameLayout
+  // writes back into the observed element's box (host height + iframe
+  // transform), so running it synchronously inside the ResizeObserver
+  // callback can race with the current delivery cycle and produce
+  // "ResizeObserver loop completed with undelivered notifications" warnings
+  // on Android WebView. requestAnimationFrame moves the write out of the
+  // observation loop without changing user-visible behavior.
+  new ResizeObserver(() => requestAnimationFrame(() => applyFrameLayout(iframe))).observe(target);
 }

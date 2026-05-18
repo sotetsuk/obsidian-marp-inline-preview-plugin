@@ -7,6 +7,14 @@ type Marprc = {
   themeSet?: string | string[];
 };
 
+// Set to false (or strip) once the Android theme issue is diagnosed. These
+// logs are deliberately unconditional so the user can confirm the load path
+// end-to-end from Obsidian Mobile's remote debug console.
+const DEBUG = true;
+function log(msg: string, ...rest: unknown[]): void {
+  if (DEBUG) console.log(`[marp-inline-preview] ${msg}`, ...rest);
+}
+
 export class ThemeResolver {
   private cssByPath = new Map<string, string>();
 
@@ -27,6 +35,8 @@ export class ThemeResolver {
   async collect(file: TFile, frontmatterTheme: string | null): Promise<string | null> {
     const marprc = await this.findMarprc(file);
     const cfg = marprc ? this.parseMarprc(marprc.path, marprc.content) : null;
+    let registered = 0;
+    let attempted = 0;
 
     if (cfg?.themeSet) {
       const entries = Array.isArray(cfg.themeSet) ? cfg.themeSet : [cfg.themeSet];
@@ -51,21 +61,37 @@ export class ThemeResolver {
             const listed = await adapter.list(resolved);
             for (const p of listed.files) {
               if (p.toLowerCase().endsWith('.css')) {
+                attempted++;
                 const css = await this.readCss(p);
-                if (css != null) this.engine.registerTheme(css);
+                if (css != null) {
+                  this.engine.registerTheme(css);
+                  registered++;
+                }
               }
             }
           } catch (e) {
             console.warn(`[marp-inline-preview] failed to list ${resolved}`, e);
           }
         } else {
+          attempted++;
           const css = await this.readCss(resolved);
-          if (css != null) this.engine.registerTheme(css);
+          if (css != null) {
+            this.engine.registerTheme(css);
+            registered++;
+          }
         }
       }
     }
 
-    return frontmatterTheme || cfg?.theme || null;
+    const resolvedTheme = frontmatterTheme || cfg?.theme || null;
+    log(
+      `collect(${file.path}): marprc=${marprc?.path ?? 'none'} ` +
+        `frontmatterTheme=${frontmatterTheme ?? 'none'} ` +
+        `cfgTheme=${cfg?.theme ?? 'none'} ` +
+        `themeSet=${registered}/${attempted} ` +
+        `resolved=${resolvedTheme ?? 'none'}`,
+    );
+    return resolvedTheme;
   }
 
   /**
@@ -86,24 +112,30 @@ export class ThemeResolver {
       }
     }
     const adapter = this.app.vault.adapter;
+    const attempts: Array<{ path: string; ok: boolean; err?: string }> = [];
+    let found: { path: string; content: string } | null = null;
     for (const path of candidates) {
       try {
         const content = await adapter.read(path);
-        return { path, content };
-      } catch {
-        // Not present (or unreadable) — try next candidate. We swallow this
-        // because the lookup itself is best-effort: most vaults won't have a
-        // .marprc.yml at every candidate location and we don't want to spam
-        // the console with "file not found" for each miss.
+        attempts.push({ path, ok: true });
+        found = { path, content };
+        break;
+      } catch (e) {
+        attempts.push({ path, ok: false, err: (e as Error)?.message ?? String(e) });
       }
     }
-    return null;
+    log(`findMarprc(${file.path}) tried:`, attempts);
+    return found;
   }
 
   private parseMarprc(path: string, content: string): Marprc | null {
     try {
       const parsed = yaml.load(content);
-      if (parsed && typeof parsed === 'object') return parsed as Marprc;
+      if (parsed && typeof parsed === 'object') {
+        log(`parseMarprc(${path}) ok:`, parsed);
+        return parsed as Marprc;
+      }
+      log(`parseMarprc(${path}) returned non-object:`, parsed);
     } catch (e) {
       console.warn(`[marp-inline-preview] failed to parse ${path}`, e);
     }
@@ -112,15 +144,18 @@ export class ThemeResolver {
 
   private async readCss(path: string): Promise<string | null> {
     const cached = this.cssByPath.get(path);
-    if (cached != null) return cached;
+    if (cached != null) {
+      log(`readCss(${path}) cache hit (${cached.length} chars)`);
+      return cached;
+    }
     try {
       const css = await this.app.vault.adapter.read(path);
       this.cssByPath.set(path, css);
+      log(`readCss(${path}) ok (${css.length} chars)`);
       return css;
     } catch (e) {
       console.warn(`[marp-inline-preview] themeSet entry not readable: ${path}`, e);
       return null;
     }
   }
-
 }
