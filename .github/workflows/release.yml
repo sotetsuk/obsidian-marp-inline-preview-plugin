@@ -7,10 +7,12 @@ on:
 
 permissions:
   contents: write
+  issues: read
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -21,7 +23,49 @@ jobs:
 
       - run: npm ci
 
+      - name: Type-check (src + e2e)
+        run: |
+          npm run check:types
+          npm run check:types:e2e
+
       - run: npm run build
+
+      - name: Unit + bundle smoke (L1 + L5)
+        run: npm test
+
+      - name: Build guards (L0)
+        run: npm run test:bundle
+
+      - name: Cache Obsidian binaries
+        uses: actions/cache@v4
+        with:
+          path: .obsidian-cache
+          key: obsidian-cache-${{ runner.os }}-${{ hashFiles('manifest.json') }}
+          restore-keys: |
+            obsidian-cache-${{ runner.os }}-
+
+      - name: Desktop E2E (L4 — wdio-obsidian-service)
+        run: xvfb-run --auto-servernum --server-args='-screen 0 1280x1024x24' npm run test:e2e
+
+      - name: Verify L6 mobile-checklist issue for this tag is closed
+        # Convention: the release issue's title is "Release vX.Y.Z: mobile
+        # checklist". If a matching open issue exists, stop the release —
+        # the human-only iOS/Android verification has not signed off yet.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          title_substr="Release ${tag}: mobile checklist"
+          open_count=$(gh issue list \
+            --state open \
+            --label mobile-checklist \
+            --search "in:title \"${title_substr}\"" \
+            --json number \
+            --jq 'length')
+          if [ "$open_count" != "0" ]; then
+            echo "::error::L6 mobile-checklist issue for ${tag} is still open — close it after manual iOS/Android verification."
+            exit 1
+          fi
 
       - name: Create GitHub Release
         env:
