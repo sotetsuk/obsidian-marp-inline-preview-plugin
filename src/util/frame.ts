@@ -104,6 +104,30 @@ export function mountSlide(
 }
 
 /**
+ * Update an already-loaded iframe's contents in place — no `srcdoc` reset,
+ * no document reload, no blank flash. Returns false if the iframe's document
+ * isn't accessible yet (e.g. a very fast edit lands before the initial srcdoc
+ * load finished); callers should fall back to a full re-mount in that case.
+ *
+ * Theme `<style>` is only rewritten when the CSS actually changed, which
+ * skips an expensive style recalc on the common "user typed a character"
+ * path where only the slide body differs.
+ */
+export function updateSlideInPlace(
+  iframe: HTMLIFrameElement,
+  slideHtml: string,
+  css: string,
+): boolean {
+  const doc = iframe.contentDocument;
+  if (!doc || !doc.body) return false;
+  const themeStyle = doc.head?.querySelector('style');
+  if (themeStyle && themeStyle.textContent !== css) themeStyle.textContent = css;
+  doc.body.innerHTML = `<div class="${CONTAINER_CLASS}">${slideHtml}</div>`;
+  applyFrameLayout(iframe);
+  return true;
+}
+
+/**
  * Mount a full deck — one iframe per slide, stacked inside the host. Each
  * iframe is independently sized so viewport units (vh/vw) resolve per slide,
  * matching Marp CLI's per-slide viewport.
