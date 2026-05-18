@@ -7,14 +7,6 @@ type Marprc = {
   themeSet?: string | string[];
 };
 
-// Set to false (or strip) once the Android theme issue is diagnosed. These
-// logs are deliberately unconditional so the user can confirm the load path
-// end-to-end from Obsidian Mobile's remote debug console.
-const DEBUG = true;
-function log(msg: string, ...rest: unknown[]): void {
-  if (DEBUG) console.log(`[marp-inline-preview] ${msg}`, ...rest);
-}
-
 export class ThemeResolver {
   private cssByPath = new Map<string, string>();
 
@@ -33,22 +25,16 @@ export class ThemeResolver {
    * `.marprc.yml` lookup order: vault root, then the slide file's folder.
    */
   async collect(file: TFile, frontmatterTheme: string | null): Promise<string | null> {
-    const marprc = await this.findMarprc(file);
-    const cfg = marprc ? this.parseMarprc(marprc.path, marprc.content) : null;
-    let registered = 0;
-    let attempted = 0;
+    const marprcPath = await this.findMarprc(file);
+    const cfg = marprcPath ? await this.readMarprc(marprcPath) : null;
 
     if (cfg?.themeSet) {
       const entries = Array.isArray(cfg.themeSet) ? cfg.themeSet : [cfg.themeSet];
-      const slash = marprc ? marprc.path.lastIndexOf('/') : -1;
-      const baseDir = slash > 0 ? marprc!.path.slice(0, slash) : '';
+      const slash = marprcPath ? marprcPath.lastIndexOf('/') : -1;
+      const baseDir = slash > 0 ? marprcPath!.slice(0, slash) : '';
       const adapter = this.app.vault.adapter;
       for (const entry of entries) {
         const resolved = normalizePath(baseDir ? `${baseDir}/${entry}` : entry);
-        // Try stat to detect folders. On Obsidian Mobile, stat() returns null
-        // (rather than throws) when the path doesn't exist or is hidden; we
-        // treat anything that isn't an explicit folder as a file and let
-        // readCss() handle the actual existence check via read+catch.
         let stat: { type: 'file' | 'folder' } | null = null;
         try {
           stat = await adapter.stat(resolved);
@@ -61,100 +47,59 @@ export class ThemeResolver {
             const listed = await adapter.list(resolved);
             for (const p of listed.files) {
               if (p.toLowerCase().endsWith('.css')) {
-                attempted++;
                 const css = await this.readCss(p);
-                if (css != null) {
-                  this.engine.registerTheme(css);
-                  registered++;
-                }
+                if (css != null) this.engine.registerTheme(css);
               }
             }
           } catch (e) {
             console.warn(`[marp-inline-preview] failed to list ${resolved}`, e);
           }
         } else {
-          attempted++;
           const css = await this.readCss(resolved);
-          if (css != null) {
-            this.engine.registerTheme(css);
-            registered++;
-          }
+          if (css != null) this.engine.registerTheme(css);
         }
       }
     }
 
-    const resolvedTheme = frontmatterTheme || cfg?.theme || null;
-    log(
-      `collect(${file.path}): marprc=${marprc?.path ?? 'none'} ` +
-        `frontmatterTheme=${frontmatterTheme ?? 'none'} ` +
-        `cfgTheme=${cfg?.theme ?? 'none'} ` +
-        `themeSet=${registered}/${attempted} ` +
-        `resolved=${resolvedTheme ?? 'none'}`,
-    );
-    return resolvedTheme;
+    return frontmatterTheme || cfg?.theme || null;
   }
 
-  /**
-   * Locate `.marprc.yml` (or `.marprc.yaml`) and return its content alongside
-   * the path. We use read+catch instead of exists()+read() because Obsidian
-   * Mobile's Capacitor adapter has been observed to return `false` from
-   * `exists()` for dotfiles in the vault root even when `read()` succeeds for
-   * the same path. read+catch sidesteps that asymmetry and also halves the
-   * number of adapter calls on the happy path.
-   */
-  private async findMarprc(file: TFile): Promise<{ path: string; content: string } | null> {
-    const candidates: string[] = [];
-    for (const name of ['.marprc.yml', '.marprc.yaml']) candidates.push(name);
+  private async findMarprc(file: TFile): Promise<string | null> {
+    const adapter = this.app.vault.adapter;
+    for (const name of ['.marprc.yml', '.marprc.yaml']) {
+      if (await adapter.exists(name)) return name;
+    }
     const dir = file.parent?.path;
     if (dir && dir !== '/') {
       for (const name of ['.marprc.yml', '.marprc.yaml']) {
-        candidates.push(normalizePath(`${dir}/${name}`));
+        const p = normalizePath(`${dir}/${name}`);
+        if (await adapter.exists(p)) return p;
       }
     }
-    const adapter = this.app.vault.adapter;
-    const attempts: Array<{ path: string; ok: boolean; err?: string }> = [];
-    let found: { path: string; content: string } | null = null;
-    for (const path of candidates) {
-      try {
-        const content = await adapter.read(path);
-        attempts.push({ path, ok: true });
-        found = { path, content };
-        break;
-      } catch (e) {
-        attempts.push({ path, ok: false, err: (e as Error)?.message ?? String(e) });
-      }
-    }
-    log(`findMarprc(${file.path}) tried:`, attempts);
-    return found;
+    return null;
   }
 
-  private parseMarprc(path: string, content: string): Marprc | null {
+  private async readMarprc(path: string): Promise<Marprc | null> {
     try {
-      const parsed = yaml.load(content);
-      if (parsed && typeof parsed === 'object') {
-        log(`parseMarprc(${path}) ok:`, parsed);
-        return parsed as Marprc;
-      }
-      log(`parseMarprc(${path}) returned non-object:`, parsed);
+      const parsed = yaml.load(await this.app.vault.adapter.read(path));
+      if (parsed && typeof parsed === 'object') return parsed as Marprc;
     } catch (e) {
-      console.warn(`[marp-inline-preview] failed to parse ${path}`, e);
+      console.warn(`[marp-inline-preview] failed to read ${path}`, e);
     }
     return null;
   }
 
   private async readCss(path: string): Promise<string | null> {
     const cached = this.cssByPath.get(path);
-    if (cached != null) {
-      log(`readCss(${path}) cache hit (${cached.length} chars)`);
-      return cached;
-    }
+    if (cached != null) return cached;
     try {
-      const css = await this.app.vault.adapter.read(path);
+      const adapter = this.app.vault.adapter;
+      if (!(await adapter.exists(path))) return null;
+      const css = await adapter.read(path);
       this.cssByPath.set(path, css);
-      log(`readCss(${path}) ok (${css.length} chars)`);
       return css;
     } catch (e) {
-      console.warn(`[marp-inline-preview] themeSet entry not readable: ${path}`, e);
+      console.warn(`[marp-inline-preview] failed to read theme ${path}`, e);
       return null;
     }
   }
