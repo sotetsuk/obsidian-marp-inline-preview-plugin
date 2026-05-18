@@ -7,3 +7,9 @@ main.js.map
 # test vault state we don't want to track
 test-vault/.obsidian/workspace*
 test-vault/.obsidian/plugins/marp-inline-preview
+
+# wdio-obsidian-service binary cache (downloaded Obsidian releases)
+.obsidian-cache/
+
+# wdio fixture vault transient state
+tests/e2e/fixtures/vault/.obsidian/workspace*

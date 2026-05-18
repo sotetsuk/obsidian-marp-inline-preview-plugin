@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "target": "ES2022",
+    "types": [
+      "@wdio/globals/types",
+      "@wdio/mocha-framework",
+      "wdio-obsidian-service",
+      "node"
+    ]
+  },
+  "include": [
+    "wdio.conf.mts",
+    "tests/e2e/**/*.ts"
+  ]
+}

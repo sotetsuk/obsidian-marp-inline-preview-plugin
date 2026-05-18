@@ -1,0 +1,49 @@
+name: Nightly E2E
+
+# Runs the wdio-obsidian-service E2E suite once per night against
+# Obsidian Desktop (latest stable). Kept off the per-PR gate while
+# flake rate is being characterized — failures here block release
+# (see release.yml) but not individual PRs.
+
+on:
+  schedule:
+    # 03:00 UTC every day
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build plugin (needed before wdio installs it into the test vault)
+        run: npm run build
+
+      - name: Type-check E2E sources
+        run: npm run check:types:e2e
+
+      - name: Cache Obsidian binaries
+        uses: actions/cache@v4
+        with:
+          path: .obsidian-cache
+          key: obsidian-cache-${{ runner.os }}-${{ hashFiles('manifest.json') }}
+          restore-keys: |
+            obsidian-cache-${{ runner.os }}-
+
+      - name: Run WDIO Obsidian E2E (headless via xvfb)
+        # xvfb-run wraps the Electron headed process so it can render off-
+        # screen on the CI host. wdio-obsidian-service handles the rest:
+        # binary download/cache, vault copy, plugin install + enable.
+        run: xvfb-run --auto-servernum --server-args='-screen 0 1280x1024x24' npm run test:e2e
