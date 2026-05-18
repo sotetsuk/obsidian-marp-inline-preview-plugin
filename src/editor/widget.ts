@@ -1,28 +1,30 @@
 import { WidgetType } from '@codemirror/view';
-import { mountSlide, updateSlideInPlace } from '../util/frame';
+import { PLACEHOLDER_CLASS_NAME } from './stage';
 
-export class SlideWidget extends WidgetType {
-  constructor(private slideHtml: string, private css: string) {
+/**
+ * Minimal block-level placeholder. The actual slide content lives in a
+ * persistent iframe inside SlideStage (see ./stage.ts) which is positioned
+ * over this element after layout. The widget only needs to:
+ *  - reserve the right amount of vertical space (aspect-ratio 16/9 + 100%
+ *    width gives CM6 a measurable block of the slide's natural height),
+ *  - carry its slide index so SlideStage can match it to the right iframe.
+ *
+ * Two widgets compare equal when they refer to the same slide index, so CM6
+ * never has to throw away and rebuild a placeholder just because the slide's
+ * HTML changed — the iframe behind it gets repainted in place instead.
+ */
+export class SlidePlaceholder extends WidgetType {
+  constructor(private index: number) {
     super();
   }
 
-  eq(other: SlideWidget): boolean {
-    return other.slideHtml === this.slideHtml && other.css === this.css;
+  eq(other: SlidePlaceholder): boolean {
+    return other.index === this.index;
   }
 
   toDOM(): HTMLElement {
-    const host = createDiv({ cls: 'marp-inline-preview-host' });
-    mountSlide(host, this.slideHtml, this.css);
-    return host;
-  }
-
-  // Patch the existing iframe's document instead of letting CM6 destroy the
-  // host and call toDOM() again. Re-creating the iframe would set srcdoc
-  // afresh, which triggers a full document load — visible as a blank flash
-  // between every keystroke.
-  updateDOM(dom: HTMLElement): boolean {
-    const iframe = dom.querySelector(':scope > iframe') as HTMLIFrameElement | null;
-    if (!iframe) return false;
-    return updateSlideInPlace(iframe, this.slideHtml, this.css);
+    const dom = createDiv({ cls: PLACEHOLDER_CLASS_NAME });
+    dom.dataset.slideIndex = String(this.index);
+    return dom;
   }
 }

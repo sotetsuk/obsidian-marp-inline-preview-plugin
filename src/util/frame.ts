@@ -1,4 +1,5 @@
-// Mount Marp-rendered HTML inside a sandboxed <iframe srcdoc>.
+// Mount Marp-rendered HTML inside a sandboxed iframe — populated by writing
+// directly into its about:blank `contentDocument` (no `srcdoc`, no `src`).
 //
 // Why an iframe and not a Shadow DOM? Marp CLI and the VSCode Marp extension
 // both render slides inside a standalone document (browser tab / webview).
@@ -8,6 +9,15 @@
 // --background) and inherited values can shift computed margins in ways that
 // the CSS-string analysis does not predict. An iframe is a separate document
 // with its own <html>, so the rendering environment matches CLI/VSCode exactly.
+//
+// Why no `srcdoc`: assigning srcdoc triggers a full document load every time —
+// a visible blank frame, theme-CSS re-parse, layout, paint. CM6 viewport-culls
+// off-screen block widgets (BlockGapWidget) and calls toDOM() afresh when they
+// re-enter the viewport, so srcdoc-based mounts flash on every scroll over a
+// long deck. Instead we let the iframe load its default about:blank document
+// (synchronous, no network, no load event) and mutate that document's <head>
+// and <body> directly. With sandbox="allow-same-origin" the about:blank
+// document is same-origin with the parent so DOM access is allowed.
 //
 // Why the iframe is sized to the slide's natural 1280×720 and visually scaled
 // via CSS `transform`: themes commonly use viewport units (e.g. `max-height:
@@ -38,8 +48,8 @@ const SLIDE_HOST_CLASS = 'marp-inline-preview-host';
 
 // Marp's default slide is 1280×720 (16:9). We rely on this for the iframe's
 // intrinsic dimensions and the scale factor we apply.
-const SLIDE_W = 1280;
-const SLIDE_H = 720;
+export const SLIDE_W = 1280;
+export const SLIDE_H = 720;
 
 const OVERRIDE_CSS = `
 html, body { margin: 0; padding: 0; background: transparent; }
@@ -51,19 +61,33 @@ svg[data-marpit-svg] {
 }
 `;
 
-function buildSrcdoc(bodyHtml: string, css: string): string {
-  return (
-    '<!doctype html><html><head><meta charset="utf-8">' +
-    '<base target="_blank">' +
-    `<style>${css}</style>` +
-    `<style>${OVERRIDE_CSS}</style>` +
-    '</head><body>' +
-    bodyHtml +
-    '</body></html>'
-  );
-}
-
 const sizedIframes = new WeakSet<HTMLIFrameElement>();
+const initializedDocs = new WeakSet<Document>();
+
+const THEME_STYLE_SELECTOR = 'style[data-role="theme"]';
+
+// Exported for the editor's persistent-iframe stage; reading-mode mountSlide /
+// mountDeck use this internally via mountSlide below.
+export function paintFrame(iframe: HTMLIFrameElement, slideHtml: string, css: string): boolean {
+  const doc = iframe.contentDocument;
+  if (!doc || !doc.body) return false;
+  if (!initializedDocs.has(doc)) {
+    const base = doc.createElement('base');
+    base.setAttribute('target', '_blank');
+    doc.head.appendChild(base);
+    const themeStyle = doc.createElement('style');
+    themeStyle.setAttribute('data-role', 'theme');
+    doc.head.appendChild(themeStyle);
+    const overrideStyle = doc.createElement('style');
+    overrideStyle.textContent = OVERRIDE_CSS;
+    doc.head.appendChild(overrideStyle);
+    initializedDocs.add(doc);
+  }
+  const themeStyle = doc.head.querySelector(THEME_STYLE_SELECTOR) as HTMLStyleElement | null;
+  if (themeStyle && themeStyle.textContent !== css) themeStyle.textContent = css;
+  doc.body.innerHTML = `<div class="${CONTAINER_CLASS}">${slideHtml}</div>`;
+  return true;
+}
 
 function ensureIframe(host: HTMLElement): HTMLIFrameElement {
   let iframe = host.querySelector(':scope > iframe') as HTMLIFrameElement | null;
@@ -86,7 +110,10 @@ function ensureIframe(host: HTMLElement): HTMLIFrameElement {
 /**
  * Mount a single slide. The HTML from Marp's `htmlAsArray: true` output is
  * just the bare `<svg>` for that slide, so we wrap it in the container `<div>`
- * that Marp's selectors expect.
+ * that Marp's selectors expect. Reused for both first-mount and re-paint —
+ * `ensureIframe` returns the existing iframe if one is already attached, and
+ * `paintFrame` only rewrites the theme `<style>` when the CSS actually
+ * changed.
  */
 export function mountSlide(
   host: HTMLElement,
@@ -94,37 +121,16 @@ export function mountSlide(
   css: string,
 ): MountedFrame {
   const iframe = ensureIframe(host);
-  iframe.srcdoc = buildSrcdoc(
-    `<div class="${CONTAINER_CLASS}">${slideHtml}</div>`,
-    css,
-  );
+  if (!paintFrame(iframe, slideHtml, css)) {
+    // CM6 hands toDOM() a detached host, so iframe.contentDocument is null
+    // until the host is spliced into the editor. Microtasks drain after CM6
+    // commits its DOM updates but before the next paint — so the user
+    // never sees a blank frame.
+    queueMicrotask(() => paintFrame(iframe, slideHtml, css));
+  }
   applyFrameLayout(iframe);
   ensureSizeObserver(iframe);
   return { host, iframe };
-}
-
-/**
- * Update an already-loaded iframe's contents in place — no `srcdoc` reset,
- * no document reload, no blank flash. Returns false if the iframe's document
- * isn't accessible yet (e.g. a very fast edit lands before the initial srcdoc
- * load finished); callers should fall back to a full re-mount in that case.
- *
- * Theme `<style>` is only rewritten when the CSS actually changed, which
- * skips an expensive style recalc on the common "user typed a character"
- * path where only the slide body differs.
- */
-export function updateSlideInPlace(
-  iframe: HTMLIFrameElement,
-  slideHtml: string,
-  css: string,
-): boolean {
-  const doc = iframe.contentDocument;
-  if (!doc || !doc.body) return false;
-  const themeStyle = doc.head?.querySelector('style');
-  if (themeStyle && themeStyle.textContent !== css) themeStyle.textContent = css;
-  doc.body.innerHTML = `<div class="${CONTAINER_CLASS}">${slideHtml}</div>`;
-  applyFrameLayout(iframe);
-  return true;
 }
 
 /**

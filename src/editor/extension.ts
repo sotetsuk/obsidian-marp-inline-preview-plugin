@@ -11,7 +11,8 @@ import type { MarpEngine } from '../marp/engine';
 import type { ThemeResolver } from '../marp/themes';
 import { findSlideBreaks } from '../marp/slides';
 import { injectThemeIfMissing } from '../marp/frontmatter';
-import { SlideWidget } from './widget';
+import { SlidePlaceholder } from './widget';
+import { SlideStage, type SlideContent } from './stage';
 import { debounce } from '../util/debounce';
 import { rewriteImageSrcs } from '../util/images';
 
@@ -62,8 +63,10 @@ export function buildEditorExtension(deps: EditorDeps): Extension {
       private destroyed = false;
       private latestRunId = 0;
       private schedule: () => void;
+      private stage: SlideStage;
 
       constructor(public view: EditorView) {
+        this.stage = new SlideStage(view);
         this.schedule = debounce(() => {
           if (this.destroyed) return;
           void this.rebuild();
@@ -76,6 +79,12 @@ export function buildEditorExtension(deps: EditorDeps): Extension {
       }
 
       update(u: ViewUpdate): void {
+        // Any layout-affecting update needs an iframe reposition pass, even
+        // if nothing about the slide content changed (scroll, pane resize,
+        // viewport cull/uncull, etc.).
+        if (u.docChanged || u.viewportChanged || u.geometryChanged) {
+          this.stage.scheduleReposition();
+        }
         if (u.docChanged) {
           this.schedule();
           return;
@@ -94,10 +103,12 @@ export function buildEditorExtension(deps: EditorDeps): Extension {
 
       destroy(): void {
         this.destroyed = true;
+        this.stage.destroy();
       }
 
       async rebuild(): Promise<void> {
         if (!deps.enabled()) {
+          this.stage.syncSlides([]);
           this.push(Decoration.none);
           return;
         }
@@ -105,6 +116,7 @@ export function buildEditorExtension(deps: EditorDeps): Extension {
         const runId = ++this.latestRunId;
         const file = resolveFile(deps.app, this.view);
         if (!file) {
+          this.stage.syncSlides([]);
           this.push(Decoration.none);
           return;
         }
@@ -112,6 +124,7 @@ export function buildEditorExtension(deps: EditorDeps): Extension {
         const cache = deps.app.metadataCache.getFileCache(file);
         const fm = cache?.frontmatter ?? {};
         if (fm.marp !== true && fm.marp !== 'true') {
+          this.stage.syncSlides([]);
           this.push(Decoration.none);
           return;
         }
@@ -126,34 +139,42 @@ export function buildEditorExtension(deps: EditorDeps): Extension {
           const mdForMarp = fmTheme ? rawSrc : injectThemeIfMissing(rawSrc, theme);
 
           const rendered = deps.engine.renderArray(mdForMarp);
-          const html = rendered.html.map((h) => rewriteImageSrcs(h, file.path, deps.app));
           const fullCss = rendered.css;
+          const slides: SlideContent[] = rendered.html.map((h) => ({
+            html: rewriteImageSrcs(h, file.path, deps.app),
+            css: fullCss,
+          }));
           const breaks = findSlideBreaks(rawSrc);
+
+          // Update iframe contents first so the iframes have the new HTML by
+          // the time CM6 finishes mounting placeholders and we read their
+          // positions in the measure phase.
+          this.stage.syncSlides(slides);
 
           const builder = new RangeSetBuilder<Decoration>();
           // Marp renders one section per slide; for a deck with N break lines
-          // we get N+1 sections. Drop a widget after each break, then append
-          // the last section at the end of the document.
-          const widgetCount = Math.min(breaks.length, html.length);
+          // we get N+1 sections. Drop a placeholder after each break, then
+          // append the last section at the end of the document.
+          const widgetCount = Math.min(breaks.length, slides.length);
           for (let i = 0; i < widgetCount; i++) {
             builder.add(
               breaks[i].to,
               breaks[i].to,
               Decoration.widget({
-                widget: new SlideWidget(html[i], fullCss),
+                widget: new SlidePlaceholder(i),
                 block: true,
                 side: 1,
               }),
             );
           }
-          if (html.length > breaks.length) {
-            const lastIdx = html.length - 1;
+          if (slides.length > breaks.length) {
+            const lastIdx = slides.length - 1;
             const docLength = this.view.state.doc.length;
             builder.add(
               docLength,
               docLength,
               Decoration.widget({
-                widget: new SlideWidget(html[lastIdx], fullCss),
+                widget: new SlidePlaceholder(lastIdx),
                 block: true,
                 side: 1,
               }),
@@ -161,8 +182,10 @@ export function buildEditorExtension(deps: EditorDeps): Extension {
           }
 
           this.push(builder.finish());
+          this.stage.scheduleReposition();
         } catch (e) {
           console.error('[marp-inline-preview] edit-mode render failed', e);
+          this.stage.syncSlides([]);
           this.push(Decoration.none);
         }
       }

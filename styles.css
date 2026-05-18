@@ -25,6 +25,30 @@
      visually to fit the host. */
 }
 
+/*
+ * Edit mode uses a persistent-iframe stage (see src/editor/stage.ts) instead
+ * of the per-widget hosts above. The stage covers .cm-scroller's positioned
+ * area and holds one absolutely-positioned iframe per slide; the placeholders
+ * inside .cm-content just reserve layout space so CM6's height map is right.
+ */
+.marp-slide-stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.marp-slide-placeholder {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  margin: 0.5em 0 1em 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  background: var(--background-secondary);
+}
+
 .marp-inline-preview-host .marp-inline-preview-scale {
   display: block;
   width: 100%;
