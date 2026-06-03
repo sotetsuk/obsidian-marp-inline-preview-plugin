@@ -5,17 +5,20 @@ import { buildReadingPostProcessor } from './reading/postProcessor';
 import { buildEditorExtension, refreshSlides } from './editor/extension';
 import type { EditorView } from '@codemirror/view';
 import { DEBOUNCE_MS, DEFAULT_SETTINGS, MarpSettingTab, MarpSettings } from './settings';
+import { createSlideSyncBus, type SlideSyncBus } from './sync/bus';
 
 export default class MarpInlinePreviewPlugin extends Plugin {
   settings: MarpSettings = { ...DEFAULT_SETTINGS };
   engine!: MarpEngine;
   themes!: ThemeResolver;
+  sync!: SlideSyncBus;
 
   async onload(): Promise<void> {
     await this.loadSettings();
 
     this.engine = new MarpEngine({ math: this.settings.math === 'off' ? false : 'katex' });
     this.themes = new ThemeResolver(this.app, this.engine);
+    this.sync = createSlideSyncBus();
 
     this.registerMarkdownPostProcessor(
       buildReadingPostProcessor({
@@ -23,6 +26,8 @@ export default class MarpInlinePreviewPlugin extends Plugin {
         engine: this.engine,
         themes: this.themes,
         enabled: () => this.settings.readingPreview,
+        sync: this.sync,
+        syncEnabled: () => this.settings.syncScrollPosition,
       }),
     );
 
@@ -33,6 +38,8 @@ export default class MarpInlinePreviewPlugin extends Plugin {
         themes: this.themes,
         enabled: () => this.settings.editPreview,
         debounceMs: () => DEBOUNCE_MS,
+        sync: this.sync,
+        syncEnabled: () => this.settings.syncScrollPosition,
       }),
     );
 

@@ -5,3 +5,7 @@ export const normalizePath = (p: string): string => {
 };
 export class TFile {}
 export class App {}
+export class MarkdownRenderChild {
+  onunload: () => void = () => undefined;
+  constructor(public containerEl: HTMLElement) {}
+}

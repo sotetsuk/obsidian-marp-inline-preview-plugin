@@ -5,12 +5,14 @@ export interface MarpSettings {
   editPreview: boolean;
   readingPreview: boolean;
   math: 'katex' | 'off';
+  syncScrollPosition: boolean;
 }
 
 export const DEFAULT_SETTINGS: MarpSettings = {
   editPreview: true,
   readingPreview: true,
   math: 'katex',
+  syncScrollPosition: true,
 };
 
 /** Fixed debounce for edit-mode rebuilds. Was tunable via settings; pinned here. */
@@ -45,6 +47,19 @@ export class MarpSettingTab extends PluginSettingTab {
       .addToggle((t) =>
         t.setValue(this.plugin.settings.readingPreview).onChange(async (v) => {
           this.plugin.settings.readingPreview = v;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName('Sync slide position')
+      .setDesc(
+        'Keep the same slide visible when switching between editing and reading mode, ' +
+          'and when viewing the deck in split panes.',
+      )
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.syncScrollPosition).onChange(async (v) => {
+          this.plugin.settings.syncScrollPosition = v;
           await this.plugin.saveSettings();
         }),
       );

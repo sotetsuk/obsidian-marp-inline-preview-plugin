@@ -30,6 +30,13 @@ vi.mock('../src/marp/engine', () => ({
 }));
 
 const { buildReadingPostProcessor } = await import('../src/reading/postProcessor');
+import { createSlideSyncBus } from '../src/sync/bus';
+
+// Default sync deps for tests that don't care about position sync. Tests that
+// assert sync behavior build their own bus and pass it explicitly.
+function makeSync() {
+  return { sync: createSlideSyncBus(), syncEnabled: () => true };
+}
 
 // happy-dom returns null for offsetParent on detached/non-laid-out elements.
 // The production code uses this as a "host is actually visible" gate that
@@ -126,6 +133,7 @@ describe('buildReadingPostProcessor', () => {
       engine: makeEngine(),
       themes: makeThemes(),
       enabled: () => false,
+      ...makeSync(),
     });
     await processor(child, makeContext({ sourcePath: 'deck.md', frontmatter: { marp: true } }));
     expect(host.querySelector('.marp-deck-overlay')).toBeNull();
@@ -139,6 +147,7 @@ describe('buildReadingPostProcessor', () => {
       engine: makeEngine(),
       themes: makeThemes(),
       enabled: () => true,
+      ...makeSync(),
     });
     await processor(child, makeContext({ sourcePath: 'deck.md', frontmatter: { marp: true } }));
 
@@ -158,6 +167,7 @@ describe('buildReadingPostProcessor', () => {
       engine: makeEngine(),
       themes: makeThemes(),
       enabled: () => true,
+      ...makeSync(),
     });
     // Seed a stale overlay to ensure cleanup runs.
     const stale = document.createElement('div');
@@ -182,6 +192,7 @@ describe('buildReadingPostProcessor', () => {
       engine: makeEngine(),
       themes: makeThemes(),
       enabled: () => true,
+      ...makeSync(),
     });
     const ctx = makeContext({ sourcePath: 'deck.md', frontmatter: { marp: true } });
 
@@ -204,6 +215,7 @@ describe('buildReadingPostProcessor', () => {
       engine: makeEngine(),
       themes: makeThemes(),
       enabled: () => true,
+      ...makeSync(),
     });
     const ctx = makeContext({ sourcePath: 'deck.md', frontmatter: { marp: true } });
 
@@ -227,11 +239,127 @@ describe('buildReadingPostProcessor', () => {
       engine: makeEngine(),
       themes: makeThemes(),
       enabled: () => true,
+      ...makeSync(),
     });
     await processor(child, makeContext({ sourcePath: 'deck.md', frontmatter: { marp: true } }));
 
     const err = host.querySelector('.marp-inline-preview-error');
     expect(err).not.toBeNull();
     expect(err!.textContent).toContain('boom');
+  });
+});
+
+describe('buildReadingPostProcessor — slide position sync', () => {
+  // happy-dom returns all-zero rects; stub geometry so detection/scroll math has
+  // something to chew on. Slide hosts are 100px tall starting at i*100; the host
+  // (= the scroll container) sits at the top.
+  function rect(top: number, height: number): DOMRect {
+    return {
+      top,
+      bottom: top + height,
+      height,
+      width: 200,
+      left: 0,
+      right: 200,
+      x: 0,
+      y: top,
+      toJSON() {},
+    } as DOMRect;
+  }
+  function stubGeometry(slideTop: (i: number) => number) {
+    return vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        if (this.classList.contains('marp-inline-preview-host')) {
+          return rect(slideTop(Number(this.dataset.slideIndex)), 100);
+        }
+        return rect(0, 600); // scroll container / host
+      });
+  }
+  function threeSlideProcessor(bus: ReturnType<typeof createSlideSyncBus>) {
+    renderArrayMock.mockReturnValue({
+      html: ['<svg>a</svg>', '<svg>b</svg>', '<svg>c</svg>'],
+      css: '',
+    });
+    return buildReadingPostProcessor({
+      app: makeAppWithTFile({ source: '# a\n---\n# b\n---\n# c', frontmatter: { marp: true } }),
+      engine: makeEngine(),
+      themes: makeThemes(),
+      enabled: () => true,
+      sync: bus,
+      syncEnabled: () => true,
+    });
+  }
+
+  it('restores scroll position from the bus on mount', async () => {
+    const { host, child } = buildHost();
+    host.style.setProperty('overflow-y', 'auto'); // make host the scroller
+    host.scrollTop = 0;
+    const geo = stubGeometry((i) => i * 100);
+    const bus = createSlideSyncBus();
+    bus.report('deck.md', 1, bus.createSource()); // someone else is on slide 1
+
+    const processor = threeSlideProcessor(bus);
+    await processor(child, makeContext({ sourcePath: 'deck.md', frontmatter: { marp: true } }));
+
+    // Slide host 1 is at top=100; scrolled so it sits at the container top.
+    expect(host.scrollTop).toBe(100);
+    geo.mockRestore();
+  });
+
+  it('reports the topmost slide to the bus on scroll', async () => {
+    const { host, child } = buildHost();
+    host.style.setProperty('overflow-y', 'auto');
+    const geo = stubGeometry((i) => i * 100); // initially slide 0 at top
+    const bus = createSlideSyncBus();
+    const seen = vi.fn();
+    bus.subscribe('deck.md', bus.createSource(), seen);
+
+    const processor = threeSlideProcessor(bus);
+    await processor(child, makeContext({ sourcePath: 'deck.md', frontmatter: { marp: true } }));
+
+    // User scrolls down 200px → slide 2 now owns the top edge.
+    geo.mockImplementation(function (this: HTMLElement) {
+      if (this.classList.contains('marp-inline-preview-host')) {
+        return rect(Number(this.dataset.slideIndex) * 100 - 200, 100);
+      }
+      return rect(0, 600);
+    });
+    host.dispatchEvent(new Event('scroll'));
+    await new Promise((r) => setTimeout(r, 40)); // let the rAF-coalesced detect run
+
+    expect(seen).toHaveBeenCalled();
+    expect(seen.mock.lastCall?.[0]).toBe(2);
+    geo.mockRestore();
+  });
+
+  it('tears down the scroll listener on cleanup', async () => {
+    const { host, child } = buildHost();
+    host.style.setProperty('overflow-y', 'auto');
+    const geo = stubGeometry((i) => i * 100);
+    const bus = createSlideSyncBus();
+
+    const app = makeAppWithTFile({ source: '# a\n---\n# b\n---\n# c', frontmatter: { marp: true } });
+    renderArrayMock.mockReturnValue({
+      html: ['<svg>a</svg>', '<svg>b</svg>', '<svg>c</svg>'],
+      css: '',
+    });
+    const processor = buildReadingPostProcessor({
+      app,
+      engine: makeEngine(),
+      themes: makeThemes(),
+      enabled: () => true,
+      sync: bus,
+      syncEnabled: () => true,
+    });
+    await processor(child, makeContext({ sourcePath: 'deck.md', frontmatter: { marp: true } }));
+
+    const removeSpy = vi.spyOn(host, 'removeEventListener');
+    // File becomes non-marp → cleanup() must tear the sync record down.
+    app.metadataCache.getFileCache.mockReturnValue({ frontmatter: undefined });
+    await processor(child, makeContext({ sourcePath: 'deck.md', frontmatter: undefined }));
+
+    expect(removeSpy).toHaveBeenCalledWith('scroll', expect.any(Function));
+    geo.mockRestore();
   });
 });

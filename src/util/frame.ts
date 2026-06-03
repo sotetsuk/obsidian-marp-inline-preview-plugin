@@ -147,13 +147,15 @@ export function mountDeck(
   host.querySelectorAll(`:scope > .${SLIDE_HOST_CLASS}`).forEach((n) => n.remove());
 
   const iframes: HTMLIFrameElement[] = [];
-  for (const slideHtml of slides) {
+  slides.forEach((slideHtml, i) => {
     const slideHost = document.createElement('div');
     slideHost.className = SLIDE_HOST_CLASS;
+    // Index used by slide-position sync to map a host back to its slide number.
+    slideHost.dataset.slideIndex = String(i);
     host.appendChild(slideHost);
     const { iframe } = mountSlide(slideHost, slideHtml, css);
     iframes.push(iframe);
-  }
+  });
   return { host, iframes };
 }
 
